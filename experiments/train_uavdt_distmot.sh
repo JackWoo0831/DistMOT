@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python tools/train.py configs/distmot/distmot_yolox_tiny_uavdt.py --work-dir work_dirs/tttest

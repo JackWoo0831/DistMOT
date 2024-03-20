@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=3 python tools/train.py configs/qdtrack/qdtrack_visdrone_baseline.py

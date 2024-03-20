@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python tools/test_tracking.py configs/bytetrack/bytetrack_yolox_l_visdrone.py --checkpoint ckpts/yolox/yolox_large_VisDrone_20epochs_20240225.pth

@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 python tools/test_tracking.py configs/qdtrack/qdtrack_visdrone_baseline.py --checkpoint ckpts/qdtrack/epoch_10.pth

@@ -144,7 +144,7 @@ model = dict(
         nms_backdrop_iou_thr=0.3,
         nms_class_iou_thr=0.7,
         with_cats=False,
-        match_metric='cosine'), 
+        match_metric='dotproduct'), 
     )
 # optimizer
 optim_wrapper = dict(

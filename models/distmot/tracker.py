@@ -16,6 +16,9 @@ from mmdet.models.trackers.base_tracker import BaseTracker
 
 import lap 
 
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+
 @MODELS.register_module()
 class DistMOTTracker(BaseTracker):
     """
@@ -38,8 +41,8 @@ class DistMOTTracker(BaseTracker):
                  match_metric: str = 'bisoftmax',
 
                  # memory bank 
-                 append_sim_thr: float = 0.7,  # for o_j^t, if forall o_j^{t'} (t' < t): sim(o_j^t, o_j^{t'}) < thr, -> push_back o_j^t
-                 max_buffer_size: int = 30,  # maximum store buffer for object, if exceeded, remove first-in
+                 append_sim_thr: float = 0.9,  # for o_j^t, if forall o_j^{t'} (t' < t): sim(o_j^t, o_j^{t'}) < thr, -> push_back o_j^t
+                 max_buffer_size: int = 10,  # maximum store buffer for object, if exceeded, remove first-in
 
                  # solver
                  solver: str = 'greedy',  # solver, 'greedy' or 'optimal'
@@ -59,7 +62,7 @@ class DistMOTTracker(BaseTracker):
         self.nms_backdrop_iou_thr = nms_backdrop_iou_thr
         self.nms_class_iou_thr = nms_class_iou_thr
         self.with_cats = with_cats
-        assert match_metric in ['bisoftmax', 'softmax', 'cosine']
+        assert match_metric in ['bisoftmax', 'softmax', 'cosine', 'dotproduct']
         self.match_metric = match_metric
 
         self.num_tracks = 0
@@ -158,7 +161,7 @@ class DistMOTTracker(BaseTracker):
         if id not in self.memo_bank.keys():
             # initialize a new id
             new_memo = dict()
-            new_memo['embed'] = F.normalize(embed[None, ], p=2, dim=1)  # normed
+            new_memo['embed'] = embed[None, ]
             new_memo['frame_id'] = [frame_id]
             self.memo_bank[id] = new_memo
 
@@ -166,12 +169,13 @@ class DistMOTTracker(BaseTracker):
             # cal the most similar one
             # embed: (dim, ) memo.embed: (num_of_storage, dim)
             cur_id_memo = self.memo_bank[id]['embed']
-            similarities = torch.matmul(cur_id_memo, F.normalize(embed, p=2, dim=0))  # (num_of_storage, )
+            similarities = torch.matmul(F.normalize(cur_id_memo, p=2, dim=1), 
+                                        F.normalize(embed, p=2, dim=0))  # (num_of_storage, )
             
             if 0.4 < similarities.max() < self.append_sim_thr:
                 cur_id_memo = \
                     torch.vstack([cur_id_memo, embed])
-            
+                        
             else:  # TODO find a stragegy like moving average
                 pass
 
@@ -264,6 +268,8 @@ class DistMOTTracker(BaseTracker):
         labels = labels[valids]
         embeds = embeds[valids, :]
 
+        # self._t_SNE_vis(embeds)
+
         # init ids container
         ids = torch.full((bboxes.size(0), ), -1, dtype=torch.long)
 
@@ -279,14 +285,13 @@ class DistMOTTracker(BaseTracker):
             # calculate the most-like and most-dislike similarity matrix
             latest_like, most_like, most_dislike = self.get_similarity_matrix(embeds, memo_embeds)
 
-            match_scores = latest_like + 0.25 * (most_like + most_dislike) 
-            # match_scores = latest_like + 0.1 * most_dislike
-
-            d2t_scores = match_scores.softmax(dim=1)
-            t2d_scores = match_scores.softmax(dim=0)
-            match_scores = 0.5 * (d2t_scores + t2d_scores)
+            match_scores = latest_like + 0.1 * (most_like - most_dislike) 
             
-            """
+            d2t = match_scores.softmax(dim=1)
+            t2d = match_scores.softmax(dim=0)
+            match_scores = 0.5 * (d2t + t2d)
+
+            """      
             print(f'------------{frame_id}------------')
             _, inds = torch.max(latest_like, dim=1)
             inds = torch.cat([torch.arange(0, latest_like.shape[0]).to(inds.device).view(-1, 1), inds.view(-1, 1)], dim=1)
@@ -295,7 +300,7 @@ class DistMOTTracker(BaseTracker):
             # print('most_dislike', most_dislike)
             # print('most_like', most_like)
             # print('latest_like', latest_like)
-            # print('match_scores', match_scores)
+            print('match_scores', match_scores)
             if self.frame_cnt == 10: exit()
             """
                        
@@ -350,7 +355,7 @@ class DistMOTTracker(BaseTracker):
         return bbox_overlaps(detections, trajectories)  # (num_of_dets, num_of_trajs)
     
     def get_similarity_matrix(self, det_embeds: Tensor, traj_embeds: Tensor, 
-                              post_process: bool = True, ):
+                              post_process: bool = False, ):
         """get similarity matrix from memory bank (latest, most_like and most_dislike)
 
         Args:
@@ -371,7 +376,7 @@ class DistMOTTracker(BaseTracker):
             device=det_embeds.device)
 
         # norm
-        det_embeds_ = F.normalize(det_embeds, p=2, dim=1)
+        det_embeds_ = det_embeds
 
         # NOTE reduce time complexity
         for det_idx in range(det_embeds_.shape[0]):
@@ -393,6 +398,8 @@ class DistMOTTracker(BaseTracker):
                 det_embeds_, 
                 F.normalize(traj_embeds, p=2, dim=1).t(), 
             )
+        elif self.match_metric == 'dotproduct':
+            latest_like = torch.matmul(det_embeds, traj_embeds.t())
         else: raise NotImplementedError
 
         if post_process:
@@ -402,4 +409,49 @@ class DistMOTTracker(BaseTracker):
             # most_like[most_like < 0.5] = 0  # different id, set 0
 
         return latest_like, most_like, most_dislike
+
+    def _t_SNE_vis(self, embeds: Tensor, draw_3d: bool = False):
+        """
+        t-SNE visualization
+
+        embeds: (N, feat_dim)
+        """
+        if not draw_3d:
+            tsne = TSNE(n_components=2, )
+            X_tsne = tsne.fit_transform(embeds.cpu().numpy())
+
+            plt.scatter(X_tsne[:, 0], X_tsne[:, 1])
+            plt.title('t-SNE Visualization of Object Features')
+            plt.savefig(f'./qdtrack_baseline_vis/tSNE_{self.frame_cnt}.jpg')
+        else:
+            tsne = TSNE(n_components=3, )
+            X_tsne = tsne.fit_transform(embeds.cpu().numpy())
+
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            ax.scatter(X_tsne[:, 0], X_tsne[:, 1], X_tsne[:, 2])
+            fig.savefig(f'./qdtrack_baseline_vis/tSNE_{self.frame_cnt}.jpg')
+
+    def _response_map_vis(self, track_embed: Tensor, det_embed: Tensor, id: int):
+        """
+        draw a response map
+
+        """
+        track_embed_ = torch.tensor(track_embed).view(16, 12)
+        det_embed_ = torch.tensor(det_embed).view(16, 12)
+
+        track_embed_ = F.interpolate(track_embed_.unsqueeze(0).unsqueeze(0), size=(32, 24), mode='bilinear')
+        det_embed_ = F.interpolate(det_embed_.unsqueeze(0).unsqueeze(0), size=(32, 24), mode='bilinear')
+
+        response_map = track_embed_ * det_embed_ 
+        response_map = response_map.squeeze()
+
+        response_map = response_map.cpu().numpy()
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.imshow(response_map, cmap='hot', interpolation='nearest')
+        # fig.colorbar()
+        fig.savefig(f'./qdtrack_baseline_vis/resp_map_{self.frame_cnt}_{id}.jpg')
+
 

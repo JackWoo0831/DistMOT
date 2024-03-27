@@ -9,7 +9,9 @@ custom_imports = dict(
     imports=['datasets.visdrone', 
              'datasets.samplers',
              'models.distmot', 
-             'hooks.mot_save_result_hook'],
+             'hooks.mot_save_result_hook',
+             'task_modules.assigners', 
+             'task_modules.samplers'],
     allow_failed_imports=False)
 
 
@@ -85,7 +87,7 @@ model = dict(
         ),
     detector=detector,
     track_head=dict(
-        type='QuasiDenseTrackHead',
+        type='DistMOTHead',
         roi_extractor=dict(
             type='SingleRoIExtractor',
             roi_layer=dict(type='RoIAlign', output_size=7, sampling_ratio=0),
@@ -96,8 +98,8 @@ model = dict(
             num_convs=4,
             num_fcs=1,
             in_channels=256,
-            embed_channels=256,
-            conv_out_channels=256, 
+            embed_channels=128,
+            conv_out_channels=128, 
             norm_cfg=dict(type='GN', num_groups=32),
             loss_track=dict(type='MultiPosCrossEntropyLoss', loss_weight=0.25),
             loss_track_aux=dict(
@@ -108,21 +110,22 @@ model = dict(
                 hard_mining=True,
                 loss_weight=1.0),
             mask_cfg=dict(
-                type='MaskGenerator2D',
-                feat_dim=256,
+                type='MaskGenerator2D_MixAttn',
+                feat_dim=128, 
             ), 
-        ),
+            memo_cfg=dict(max_size=5, seq_num=56)
+            ),
         loss_bbox=dict(type='L1Loss', loss_weight=1.0),
         train_cfg=dict(
             assigner=dict(
-                type='MaxIoUAssigner',
+                type='MaxIoUAssigner_track',
                 pos_iou_thr=0.7,
                 neg_iou_thr=0.5,
                 min_pos_iou=0.5,
                 match_low_quality=False,
                 ignore_iof_thr=-1),
             sampler=dict(
-                type='CombinedSampler',
+                type='CombinedSampler_track',
                 num=256,
                 pos_fraction=0.5,
                 neg_pos_ub=3,
@@ -141,7 +144,8 @@ model = dict(
         nms_backdrop_iou_thr=0.3,
         nms_class_iou_thr=0.7,
         with_cats=False,
-        match_metric='cosine'))
+        match_metric='dotproduct'), 
+    )
 # optimizer
 optim_wrapper = dict(
     type='OptimWrapper',
@@ -149,7 +153,7 @@ optim_wrapper = dict(
     clip_grad=dict(max_norm=35, norm_type=2))
 # learning policy
 param_scheduler = [
-    dict(type='MultiStepLR', begin=0, end=12, by_epoch=True, milestones=[11])
+    dict(type='MultiStepLR', begin=0, end=12, by_epoch=True, milestones=[10])
 ]
 
 # runtime settings
@@ -279,7 +283,13 @@ custom_hooks = [
     dict(
         type='MotSaveResultHook', 
         save_dir='./txt_results', 
-    )
+    ), 
+    dict(
+        type='EMAHook',
+        ema_type='ExpMomentumEMA',
+        momentum=0.0001,
+        update_buffers=True,
+        priority=49)
 ]
 
 load_from = 'ckpts/yolox/yolox_large_VisDrone_20epochs_20240225.pth'

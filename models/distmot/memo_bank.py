@@ -2,6 +2,7 @@
 implenmentation of memory bank
 """
 
+import math
 import torch 
 from torch import Tensor
 import torch.nn.functional as F
@@ -29,8 +30,11 @@ class MemoBank:
             self.memo_bank.clear()
             self.visited_videos.add(video_ids[0])
 
-    def push(self, feats: Tensor, ref_feats: Tensor, 
-             key_sampling_result: SamplingResult = None, ref_sampling_result: SamplingResult = None,
+    def push(self, feats: Tensor, 
+             key_sampling_result: SamplingResult = None, 
+             cos_sim: Tensor = None, 
+             entropy: Tensor = None, 
+             history_ids: Tensor = None, 
              video_id: int = 0, mode: str = 'mean') -> None:
         """push feats into memo bank
         
@@ -39,10 +43,8 @@ class MemoBank:
         
         """
         feats = feats.detach()
-        ref_feats = ref_feats.detach()
        
         id_list = key_sampling_result.pos_assigned_track_ids
-        ref_id_list = ref_sampling_result.pos_assigned_track_ids
 
         assert feats.shape[0] == id_list.shape[0]
 
@@ -78,8 +80,9 @@ class MemoBank:
                 else:
                     # TODO push back rules
                     feat_candidate = feats[idxes].mean(dim=0)
-                    if self._check_whether_push(video_id, instance_id, feat_candidate, ):
-                        self.memo_bank[video_id][instance_id].append(feats[idxes].mean(dim=0))
+                    # if self._check_whether_push(video_id, instance_id, feat_candidate, ):
+                    if self._check_whether_push_2(cos_sim, entropy, idxes, history_ids == instance_id):
+                        self.memo_bank[video_id][instance_id].append(feat_candidate)
         
                 # check max size
                 if (len(self.memo_bank[video_id][instance_id]) > self.max_size):
@@ -98,12 +101,13 @@ class MemoBank:
         ref_embeds = torch.split(ref_roi_feats, num_ref_rois)
 
         dists, labels, weights = [], [], []
+        cos_dists, entropies = [], []
 
         batch_size = len(num_key_rois)
         assert len(video_id_list) == batch_size
 
         for batch_idx in range(batch_size):
-            dist, label, weight = self.gen_logits_single(
+            dist, label, weight, cos_dist, entropy = self.gen_logits_single(
                 key_embeds[batch_idx], 
                 ref_embeds[batch_idx], 
                 key_sampling_result=key_sampling_results[batch_idx], 
@@ -112,10 +116,12 @@ class MemoBank:
             )
 
             dists.append(dist)
+            cos_dists.append(cos_dist)
             labels.append(label)
             weights.append(weight)
+            entropies.append(entropy)
 
-        return dists, labels, weights
+        return dists, labels, weights, cos_dists, entropies
 
 
     def gen_logits_single(self, feats: Tensor, ref_feats: Tensor, 
@@ -146,8 +152,8 @@ class MemoBank:
 
         # check if empty
         if not len(history_feats):
-            self.push(feats, ref_feats, key_sampling_result, ref_sampling_result, video_id=video_id)
-            return None, None, None 
+            self.push(feats, key_sampling_result, video_id=video_id)
+            return None, None, None, None, None
 
         history_ids = torch.tensor(history_ids).to(feats.device)  # (num of feats, )
         history_feats = torch.vstack(history_feats, ).to(feats.device)  # (num of feats, dim)
@@ -158,7 +164,11 @@ class MemoBank:
 
         # cal sim between key samples and history memos
         # print(history_feats.shape)  # for debug
-        dist = embed_similarity(feats, history_feats, )
+        dist = embed_similarity(feats, history_feats, method='cosine')
+        cos_dist = embed_similarity(feats.detach(), history_feats, method='cosine')  # NOTE omit grad
+        assert not cos_dist.requires_grad
+
+        entropy = self.cal_shannon_entropy(cos_dist, history_ids)  # (num of cur, num of hist)
 
         # For debug
         """
@@ -171,22 +181,43 @@ class MemoBank:
         """
 
         # push current key samples
-        self.push(feats, ref_feats, key_sampling_result, ref_sampling_result, video_id=video_id)
+        self.push(feats, key_sampling_result, cos_dist, entropy, history_ids, video_id=video_id)
 
-        return dist, labels, weights
+        return dist, labels, weights, cos_dist, entropy
     
-    def cal_history_loss(self, dists: Tensor, labels: Tensor):
+    def cal_shannon_entropy(self, cos_sim: Tensor, history_ids: Tensor) -> Tensor:
         """
-        calulate loss wrt history memeory
+        cal shannon entropy along dim 1
 
         Args:
-            dists: shape (num_of_rois, num_of_memos)
-            labels: shape (num_of_rois, num_of_memos)
+            cos_dim: shape (num of cur feats, num of memo of corresponding id)
+            history_ids: shape (num of memo feat of corresponding id, )
         """
 
+        hist_ids_unique = torch.unique(history_ids)
+        ret = torch.zeros_like(cos_sim)
+
+        for id in hist_ids_unique:
+            col_idxes = history_ids == id  # if col_idxes.shape[1] == 1, entropy = 0
+
+            # E = \sum_i H(i) / N, H(i) = p \log p + (1 - p) \log (1 - p), N = num of hist memo
+
+            cos_sim_region = cos_sim[:, col_idxes]
+            cos_sim_region = torch.clamp(cos_sim_region, min=0.1, max=0.9)
+            entropy = cos_sim_region * torch.log2(cos_sim_region) + \
+                        (1 - cos_sim_region) * torch.log2(1 - cos_sim_region)
+            
+            assert not torch.isnan(entropy).any()  # TODO 
+
+            entropy = torch.mean(-1 * entropy, dim=1, keepdim=True)
+            ret[:, col_idxes] = entropy.repeat((1, cos_sim_region.shape[1]))
+
+        return ret
+
+
     def _check_whether_push(self, video_id: int, instance_id: int, feat: Tensor, 
-                            enable: bool = True, 
-                            push_high_thresh: float = 0.9, push_low_thresh: float = 0.0) -> bool:
+                            enable: bool = True, rule: str = 'sim',  # 'sim' or 'entropy'
+                            sim_thresh: list = [0.2, 0.9], entropy_thresh: float = 0.5) -> bool:
         """
         check if the current feature need to push in the memo bank
         """
@@ -198,12 +229,45 @@ class MemoBank:
         # assert feat.shape[0] == 1
 
         if feat.ndim == 1: feat = feat[None, :]
-        cos_sim = embed_similarity(feat, histoty_feats, method='cosine')
+        cos_sim = embed_similarity(feat, histoty_feats, method='cosine')  # (num of cur, num of memos)
 
-        if cos_sim.max() < push_high_thresh and cos_sim.min() > push_low_thresh:
-            return True
-        
+        if rule == 'sim':
+
+            if cos_sim.max() < sim_thresh[1] and cos_sim.min() > sim_thresh[0]:
+                return True
+            
+        elif rule == 'entropy':
+            sim_softmax = F.softmax(cos_sim, dim=1)  # (num of cur, num of memos)
+            sim_log_softmax = F.log_softmax(cos_sim, dim=1)
+            entropy = -1 * torch.sum(sim_softmax * sim_log_softmax, dim=1, keepdim=True)  # (num of cur, 1)
+            
+            if entropy < entropy_thresh * math.log2(histoty_feats.shape[0]):
+                return True
+       
         return False
+    
+    def _check_whether_push_2(self, cos_sim: Tensor, entropy: Tensor, 
+                              cur_idxes: Tensor, hist_idxes: Tensor, 
+                              rule: str = 'entropy',  # 'sim' or 'entropy',
+                              sim_thresh: list = [0.2, 0.9], entropy_thresh: float = 0.8
+                              ) -> bool:
+        
+        cos_sim_ = cos_sim[:, hist_idxes]
+        cos_sim_ = cos_sim_[cur_idxes, :]
+
+        entropy_ = entropy[:, hist_idxes]
+        entropy_ = entropy_[cur_idxes, :]
+
+        if rule == 'sim':
+            if cos_sim_.min() > sim_thresh[0] and cos_sim_.max() < sim_thresh[1]:
+                return True
+
+        elif rule == 'entropy':
+            if entropy_.mean() <= entropy_thresh:
+                return True
+            
+        return False
+        
     
     def _label_smoothing(self, label: Tensor):
         """

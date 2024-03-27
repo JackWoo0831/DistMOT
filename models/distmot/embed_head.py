@@ -42,7 +42,7 @@ class DistEmbedHead(BaseModule):
                      loss_weight=1.0,
                      hard_mining=True),
                 loss_track_hist: dict = dict(
-                     type='MultiPosCrossEntropyLoss',
+                     type='DistMOTLoss',
                      loss_weight=0.1),
 
                  mask_cfg: dict = dict(
@@ -51,7 +51,7 @@ class DistEmbedHead(BaseModule):
                      layer_num=1,                      
                  ),  # config of mask generation module
                  memo_cfg: dict = dict(
-                     max_size=3,
+                     max_size=10,
                  ),  # config for memory bank
 
                  init_cfg: dict = dict(
@@ -365,7 +365,7 @@ class DistEmbedHead(BaseModule):
                                             ref_sampling_results)
         
         # update memo bank
-        hist_dists, hist_labels, hist_weights = \
+        hist_dists, hist_labels, hist_weights, hist_cos_dists, hist_entropies = \
             self.memo_bank.gen_logits(key_track_feats, ref_track_feats, 
                             key_sampling_results, ref_sampling_results, 
                             video_id_list=video_id_list)
@@ -394,12 +394,15 @@ class DistEmbedHead(BaseModule):
                 )        
         """
 
-        """MultiPos CELoss"""
-        for _dists, _labels, _weights in zip(hist_dists, hist_labels, hist_weights):            
+        for _dists, _labels, _weights, _cos_dists, _etys in zip(hist_dists, hist_labels, hist_weights, hist_cos_dists, hist_entropies):            
             if _dists is not None:
 
+                # loss_hist += self.loss_track_hist(
+                #     _dists, _labels, _weights, avg_factor=_weights.sum()
+                # )  # origin multi-positive CE Loss
+
                 loss_hist += self.loss_track_hist(
-                    _dists, _labels, _weights, avg_factor=_weights.sum()
+                    _dists, _labels, _cos_dists, _etys, _weights, avg_factor=_weights.sum()
                 )
         
         losses['loss_hist'] = loss_hist / len(hist_dists)

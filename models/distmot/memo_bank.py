@@ -164,7 +164,7 @@ class MemoBank:
 
         # cal sim between key samples and history memos
         # print(history_feats.shape)  # for debug
-        dist = embed_similarity(feats, history_feats, method='cosine')
+        dist = embed_similarity(feats, history_feats, )
         cos_dist = embed_similarity(feats.detach(), history_feats, method='cosine')  # NOTE omit grad
         assert not cos_dist.requires_grad
 
@@ -249,7 +249,7 @@ class MemoBank:
     def _check_whether_push_2(self, cos_sim: Tensor, entropy: Tensor, 
                               cur_idxes: Tensor, hist_idxes: Tensor, 
                               rule: str = 'entropy',  # 'sim' or 'entropy',
-                              sim_thresh: list = [0.2, 0.9], entropy_thresh: float = 0.8
+                              sim_thresh: list = [0.2, 0.9], entropy_thresh: float = 0.45
                               ) -> bool:
         
         cos_sim_ = cos_sim[:, hist_idxes]
@@ -263,7 +263,7 @@ class MemoBank:
                 return True
 
         elif rule == 'entropy':
-            if entropy_.mean() <= entropy_thresh:
+            if entropy_.mean() >= entropy_thresh:
                 return True
             
         return False

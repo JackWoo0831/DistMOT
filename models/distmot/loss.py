@@ -36,7 +36,7 @@ class DistMOTLoss(BaseModule):
 
         if self.manner == 'entropy':
             # l_q = \log [1 + w_i \sum_{k^+} \sum_{k^-} (e^- \dot (q k^-) - e^+ \dot (q k^+) )]
-            entropy[pos_inds] = 1. - entropy[pos_inds]
+            entropy[pos_inds] = 2. - entropy[pos_inds]
             dot_product = dot_product * entropy 
 
         pred_pos = dot_product * pos_inds.float()

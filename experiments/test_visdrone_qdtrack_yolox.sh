@@ -1,2 +1,2 @@
 # CUDA_VISIBLE_DEVICES=2 python tools/test_tracking.py configs/qdtrack/qdtrack_yolox_visdrone_baseline.py --checkpoint ckpts/qdtrack_yolox/20240227_base_setting/epoch_12.pth
-CUDA_VISIBLE_DEVICES=0 python tools/test_tracking.py configs/qdtrack/qdtrack_yolox_tiny_visdrone_baseline.py --checkpoint work_dirs/qdtrack_yolox_tiny_visdrone_baseline/epoch_4.pth
+CUDA_VISIBLE_DEVICES=7 python tools/test_tracking.py configs/qdtrack/qdtrack_yolox_tiny_visdrone_baseline.py --checkpoint ckpts/qdtrack_yolox/qdtrack_yolox_tiny_visdrone_baseline/epoch_8.pth

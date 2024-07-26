@@ -15,6 +15,7 @@ import cv2
 
 CATEGORIES = [1, 4, 5, 6, 9]
 CAT_MAP = {item: idx + 1 for idx, item in enumerate(CATEGORIES)}
+CERTAIN_SEQS = []
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -90,6 +91,12 @@ def main():
 
         video_names = os.listdir(osp.join(in_folder, 'sequences'))
         video_names = sorted(video_names)
+
+        if len(CERTAIN_SEQS):
+            video_names = [name for name in video_names if name in CERTAIN_SEQS]
+            print(f'Warning: Only {video_names} are convertered')
+
+            if not len(video_names): continue
 
         for video_name in video_names:
             ins_maps = dict()  # gt track id -> anno track id

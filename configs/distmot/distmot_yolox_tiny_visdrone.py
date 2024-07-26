@@ -259,7 +259,7 @@ test_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/annotations/VisDrone2019-MOT-val_qdtrack.json',
+        ann_file='/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/annotations/VisDrone2019-MOT-test-dev_qdtrack.json',
         data_prefix=dict(img_path=''),
         test_mode=True,
         pipeline=test_pipeline))
@@ -273,13 +273,13 @@ test_evaluator = val_evaluator
 
 custom_hooks = [
     dict(type='SyncBuffersHook'), 
-    # dict(
-    #     type='TrackVisualizationHook', 
-    #     draw=True, 
-    #     frame_interval=1, 
-    #     score_thr=0.1, 
-    #     test_out_dir='/data/wujiapeng/codes/ctrMOT/qdtrack_baseline_vis'
-    # ), 
+    dict(
+        type='TrackVisualizationHook', 
+        draw=True, 
+        frame_interval=1, 
+        score_thr=0.1, 
+        test_out_dir='/data/wujiapeng/codes/ctrMOT/qdtrack_baseline_vis'
+    ), 
     dict(
         type='MotSaveResultHook', 
         save_dir='./txt_results', 

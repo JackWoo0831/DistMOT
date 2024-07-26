@@ -18,6 +18,7 @@ import lap
 
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+import numpy as np 
 
 @MODELS.register_module()
 class DistMOTTracker(BaseTracker):
@@ -268,8 +269,6 @@ class DistMOTTracker(BaseTracker):
         labels = labels[valids]
         embeds = embeds[valids, :]
 
-        # self._t_SNE_vis(embeds)
-
         # init ids container
         ids = torch.full((bboxes.size(0), ), -1, dtype=torch.long)
 
@@ -285,7 +284,7 @@ class DistMOTTracker(BaseTracker):
             # calculate the most-like and most-dislike similarity matrix
             latest_like, most_like, most_dislike = self.get_similarity_matrix(embeds, memo_embeds)
 
-            match_scores = latest_like + 0.1 * (most_like - most_dislike) 
+            match_scores = latest_like + 0.1 * most_dislike
             
             d2t = match_scores.softmax(dim=1)
             t2d = match_scores.softmax(dim=0)
@@ -331,6 +330,9 @@ class DistMOTTracker(BaseTracker):
                     if row[i] > -1 and scores[i] > self.obj_score_thr: 
                         id = memo_ids[row[i]]
                         ids[i] = id
+
+        # tSNE 
+        # self._t_SNE_vis(embeds, id=ids)
 
         # initialize new tracks
         new_inds = (ids == -1) & (scores > self.init_score_thr).cpu()
@@ -410,17 +412,36 @@ class DistMOTTracker(BaseTracker):
 
         return latest_like, most_like, most_dislike
 
-    def _t_SNE_vis(self, embeds: Tensor, draw_3d: bool = False):
+    def _t_SNE_vis(self, embeds: Tensor, id: Tensor, draw_3d: bool = False):
         """
         t-SNE visualization
 
         embeds: (N, feat_dim)
         """
-        if not draw_3d:
-            tsne = TSNE(n_components=2, )
-            X_tsne = tsne.fit_transform(embeds.cpu().numpy())
 
-            plt.scatter(X_tsne[:, 0], X_tsne[:, 1])
+        # draw by tracking id
+        """
+        assert embeds.shape[0] == id.shape[0]
+        invalid = id == -1
+        embeds = embeds[torch.logical_not(invalid)]
+        id = id[torch.logical_not(invalid)]
+
+        if invalid.all() or invalid.sum() < 5: return 
+        """
+
+        # draw by single embedding slice
+        num_of_group = embeds.shape[1] // 32
+        embeds_ = torch.chunk(embeds, chunks=num_of_group, dim=1)
+        embeds_ = torch.cat(embeds_, dim=0)
+
+        id = torch.cat([torch.Tensor([idx] * num_of_group) for idx in range(embeds.shape[0])], dim=0)
+
+        if not draw_3d:
+            tsne = TSNE(n_components=2, perplexity=min(30.0, max(5.0, float(embeds_.shape[0] - 10))))
+            X_tsne = tsne.fit_transform(embeds_.cpu().numpy())
+
+            plt.clf()
+            plt.scatter(X_tsne[:, 0], X_tsne[:, 1], c=id.cpu().numpy())
             plt.title('t-SNE Visualization of Object Features')
             plt.savefig(f'./qdtrack_baseline_vis/tSNE_{self.frame_cnt}.jpg')
         else:

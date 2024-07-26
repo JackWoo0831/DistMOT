@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=1 python tools/train.py configs/distmot/distmot_yolox_tiny_visdrone.py --work-dir work_dirs/tttest_2
+CUDA_VISIBLE_DEVICES=1 python tools/train.py configs/distmot/distmot_yolox_l_visdrone.py --work-dir work_dirs/distmot_yolox_large_visdrone_entropy --resume work_dirs/distmot_yolox_large_visdrone_entropy/epoch_6.pth

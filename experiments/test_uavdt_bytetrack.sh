@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=6 python tools/test_tracking.py configs/bytetrack/bytetrack_yolox_tiny_uavdt.py --checkpoint ckpts/yolox/yolox_tiny_UAVDT_20epochs_20240316.pth
+# CUDA_VISIBLE_DEVICES=7 python tools/test_tracking.py configs/ocsort/ocsort_yolox_tiny_uavdt.py --checkpoint ckpts/yolox/yolox_tiny_UAVDT_20epochs_20240316.pth

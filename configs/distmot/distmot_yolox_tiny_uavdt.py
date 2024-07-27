@@ -44,7 +44,7 @@ yolox = dict(
         act_cfg=dict(type='Swish')),
     bbox_head=dict(
         type='YOLOXHead_woNMS',
-        num_classes=5,
+        num_classes=1,
         in_channels=96,
         feat_channels=96,
         stacked_convs=2,
@@ -109,8 +109,11 @@ model = dict(
                 neg_margin=0.1,
                 hard_mining=True,
                 loss_weight=1.0),
-            mask_cfg=None, 
-            memo_cfg=dict(max_size=5, seq_num=30)
+            mask_cfg=dict(
+                type='MaskGenerator2D_MixAttn',
+                feat_dim=96, 
+            ), 
+            memo_cfg=dict(max_size=3, seq_num=56)
             ),
         loss_bbox=dict(type='L1Loss', loss_weight=1.0),
         train_cfg=dict(
@@ -141,7 +144,7 @@ model = dict(
         nms_backdrop_iou_thr=0.3,
         nms_class_iou_thr=0.7,
         with_cats=False,
-        match_metric='cosine'), 
+        match_metric='dotproduct'), 
     )
 # optimizer
 optim_wrapper = dict(
@@ -234,7 +237,7 @@ train_dataloader = dict(
         visibility_thr=-1,
         ann_file='/data/wujiapeng/datasets/UAVDT/annotations/train_qdtrack.json',
         data_prefix=dict(img_path=''),
-        metainfo=dict(classes=('pedestrian', )), 
+        metainfo=dict(classes=('car', )), 
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=1,
@@ -279,9 +282,10 @@ custom_hooks = [
     # ), 
     dict(
         type='MotSaveResultHook', 
+        save_dir='./txt_results_ours', 
         dataset_type='mot', 
-        save_dir='./txt_results', 
+        video_name_pos_in_path=-3
     )
 ]
 
-# load_from = 'work_dirs/yolox_tiny_uavdt_detection_only/epoch_30.pth'
+load_from = 'ckpts/yolox/yolox_tiny_UAVDT_20epochs_20240316.pth'

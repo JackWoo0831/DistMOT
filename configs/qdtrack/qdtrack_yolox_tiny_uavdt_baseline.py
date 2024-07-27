@@ -6,7 +6,7 @@ _base_ = [
 import sys, os
 sys.path.append(os.getcwd())
 custom_imports = dict(
-    imports=['datasets.visdrone', 
+    imports=['datasets.uavdt', 
              'models.qdtrack.qdtrack_yolox_baseline', 
              'hooks.mot_save_result_hook'],
     allow_failed_imports=False)
@@ -22,8 +22,8 @@ yolox = dict(
         pad_size_divisor=32),
     backbone=dict(
         type='CSPDarknet',
-        deepen_factor=1.0,
-        widen_factor=1.0,
+        deepen_factor=0.33,
+        widen_factor=0.375,
         out_indices=(2, 3, 4),
         use_depthwise=False,
         spp_kernal_sizes=(5, 9, 13),
@@ -32,9 +32,9 @@ yolox = dict(
     ),
     neck=dict(
         type='YOLOXPAFPN',
-        in_channels=[256, 512, 1024],
-        out_channels=256,
-        num_csp_blocks=3,
+        in_channels=[96, 192, 384],
+        out_channels=96,
+        num_csp_blocks=1,
         use_depthwise=False,
         upsample_cfg=dict(scale_factor=2, mode='nearest'),
         norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
@@ -42,8 +42,8 @@ yolox = dict(
     bbox_head=dict(
         type='YOLOXHead_woNMS',
         num_classes=5,
-        in_channels=256,
-        feat_channels=256,
+        in_channels=96,
+        feat_channels=96,
         stacked_convs=2,
         strides=(8, 16, 32),
         use_depthwise=False,
@@ -88,13 +88,15 @@ model = dict(
         roi_extractor=dict(
             type='SingleRoIExtractor',
             roi_layer=dict(type='RoIAlign', output_size=7, sampling_ratio=0),
-            out_channels=256,
+            out_channels=96,
             featmap_strides=[8, 16, 32]),
         embed_head=dict(
             type='QuasiDenseEmbedHead',
             num_convs=4,
             num_fcs=1,
-            embed_channels=256,
+            in_channels=96,
+            conv_out_channels=96, 
+            embed_channels=96,
             norm_cfg=dict(type='GN', num_groups=32),
             loss_track=dict(type='MultiPosCrossEntropyLoss', loss_weight=0.25),
             loss_track_aux=dict(
@@ -159,9 +161,9 @@ visualizer = dict(
 
 
 # dataset settings
-dataset_type = 'VisDroneDataset'
-data_root = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'
-img_scale = (1600, 896) 
+dataset_type = 'UAVDTDataset'
+data_root = '/data/wujiapeng/datasets/AUVDT/UAV-benckmark-M'
+img_scale = (1280, 704) 
 
 backend_args = None
 # data pipeline
@@ -223,9 +225,9 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         visibility_thr=-1,
-        ann_file='/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/annotations/VisDrone2019-MOT-train_qdtrack.json',
+        ann_file='/data/wujiapeng/datasets/UAVDT/annotations/train_qdtrack.json',
         data_prefix=dict(img_path=''),
-        metainfo=dict(classes=('pedestrian', 'car', 'van', 'truck', 'bus')), 
+        metainfo=dict(classes=('car', )), 
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=1,
@@ -235,7 +237,7 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/annotations/VisDrone2019-MOT-val_qdtrack.json',
+        ann_file='/data/wujiapeng/datasets/UAVDT/annotations/test_qdtrack.json',
         data_prefix=dict(img_path=''),
         test_mode=True,
         pipeline=test_pipeline))
@@ -247,7 +249,7 @@ test_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/annotations/VisDrone2019-MOT-test-dev_qdtrack.json',
+        ann_file='/data/wujiapeng/datasets/UAVDT/annotations/test_qdtrack.json',
         data_prefix=dict(img_path=''),
         test_mode=True,
         pipeline=test_pipeline))
@@ -261,17 +263,19 @@ test_evaluator = val_evaluator
 
 custom_hooks = [
     dict(type='SyncBuffersHook'), 
-    # dict(
-    #     type='TrackVisualizationHook', 
-    #     draw=False, 
-    #     frame_interval=30, 
-    #     score_thr=0.1, 
-    #     test_out_dir='/data/wujiapeng/codes/ctrMOT/qdtrack_baseline_vis'
-    # ), 
+    dict(
+        type='TrackVisualizationHook', 
+        draw=False, 
+        frame_interval=30, 
+        score_thr=0.1, 
+        test_out_dir='/data/wujiapeng/codes/ctrMOT/qdtrack_baseline_vis'
+    ), 
     dict(
         type='MotSaveResultHook', 
-        save_dir='./txt_results_baseline', 
+        save_dir='./txt_results', 
+        dataset_type='mot', 
+        video_name_pos_in_path=-3
     )
 ]
 
-load_from = 'ckpts/yolox/yolox_large_VisDrone_20epochs_20240225.pth'
+load_from = 'ckpts/yolox/yolox_tiny_UAVDT_20epochs_20240316.pth'

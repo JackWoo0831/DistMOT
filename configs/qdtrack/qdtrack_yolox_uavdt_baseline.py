@@ -225,7 +225,7 @@ train_dataloader = dict(
         visibility_thr=-1,
         ann_file='/data/wujiapeng/datasets/UAVDT/annotations/train_qdtrack.json',
         data_prefix=dict(img_path=''),
-        metainfo=dict(classes=('pedestrian', )), 
+        metainfo=dict(classes=('car', )), 
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=1,
@@ -270,8 +270,9 @@ custom_hooks = [
     ), 
     dict(
         type='MotSaveResultHook', 
-        dataset_type='mot', 
         save_dir='./txt_results', 
+        dataset_type='mot', 
+        video_name_pos_in_path=-3
     )
 ]
 

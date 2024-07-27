@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=5 python tools/test_tracking.py configs/distmot/distmot_yolox_tiny_uavdt.py --checkpoint work_dirs/distmot_yolox_tiny_uavdt/epoch_4.pth

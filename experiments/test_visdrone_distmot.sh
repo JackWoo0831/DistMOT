@@ -1,2 +1,2 @@
-# CUDA_VISIBLE_DEVICES=7 python tools/test_tracking.py configs/distmot/distmot_yolox_l_visdrone.py --checkpoint work_dirs/distmot_yolox_large_visdrone_entropy/epoch_6.pth
-CUDA_VISIBLE_DEVICES=4 python tools/test_tracking.py configs/distmot/distmot_yolox_tiny_visdrone.py --checkpoint ckpts/distmot/distmot_yolox_tiny_visdrone_hist_memo_MixAttn_entropy/epoch_8.pth
+CUDA_VISIBLE_DEVICES=4 python tools/test_tracking.py configs/distmot/distmot_yolox_l_visdrone.py --checkpoint ckpts/distmot/distmot_yolox_large_visdrone_hist_memo_MixAttn_entropy/epoch_7.pth
+# CUDA_VISIBLE_DEVICES=4 python tools/test_tracking.py configs/distmot/distmot_yolox_tiny_visdrone.py --checkpoint ckpts/distmot/distmot_yolox_tiny_visdrone_hist_memo_MixAttn_entropy/epoch_8.pth
